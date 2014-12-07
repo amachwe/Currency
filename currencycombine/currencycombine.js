@@ -111,17 +111,18 @@ function prepareStatistics(db)
                       stream.on('data',function(item)
                                {
 				 
-				 
+				
                                  for(var curr in item)
                                    {
+				    				  
 				    if (max[curr]==null) {
 				      max[curr] = -1;
 				    }
 				    
 				     if (min[curr]==null) {
-				      min[curr] = -100000;
+				      min[curr] = 1000000;
 				    }
-                                     if(curr != "_id")
+                                     if(curr != "_id" && curr != key)
                                        {
 					
 					  if (max[curr] <= item[curr]) {
@@ -134,11 +135,14 @@ function prepareStatistics(db)
                                          (stats[curr])["count"] += 1;
                                          (stats[curr])["avg"]=(stats[curr])["sum"]/(stats[curr])["count"];
                                        }
-
+                                    
                                    }
-				   console.log(curr+ " "+max[curr]+" " +min[curr]);
+				   
+				   for(var curr in max)
+				  {
 				   (stats[curr])["max"] = max[curr];
 				   (stats[curr])["min"] = min[curr];
+				  }
 
                                }).on('end',function()
                                      {
@@ -150,6 +154,7 @@ function prepareStatistics(db)
                                     });
                     });
      }
+     console.log("Done..");
 };
 
 /*
@@ -409,10 +414,3 @@ module.exports = new function()
   };
 }
 
-mongoClient.connect("mongodb://localhost:27017/Currency", function(err,db)
-                     {
-		      if (err) {
-			throw err;
-		      }
-prepareStatistics(db);
-		     });
