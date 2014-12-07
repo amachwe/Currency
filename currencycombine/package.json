@@ -1,0 +1,14 @@
+{
+  "name": "currencycombine",
+
+	"version":"0.1",
+
+	"description": "Currency data combiner.",
+
+  "main": "./currencycombine.js",
+
+  "dependencies":
+  {
+    "mongodb":"1.4.x"
+  }
+}
