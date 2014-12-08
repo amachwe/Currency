@@ -52,12 +52,13 @@ function writeToMongo(msg, db)
      var base = msg["base"];
      var rates = msg["rates"];
 
+     var docs = [];
      for(var from in rates)
      {
         var doc={};
         doc["_id"] = id;
         doc[base] = rates[from];
-
+	
         /*
         Get the currency conversion to all other currencies.
         */
@@ -66,6 +67,8 @@ function writeToMongo(msg, db)
             doc[to] = doc[base]/rates[to];
         }
 
+	doc["base"] = from;
+	docs.push(doc);
         db.collection(from,function(err,collection)
         {
 
@@ -78,11 +81,15 @@ function writeToMongo(msg, db)
 
         });
       }
+      
+      return docs;
 
   }
   catch(e)
   {
-     console.log(e);
+     console.log("Error: "+e);
+     
+     return null;
   }
 
 }
@@ -111,17 +118,18 @@ function prepareStatistics(db)
                       stream.on('data',function(item)
                                {
 				 
-				 
+				
                                  for(var curr in item)
                                    {
+				    				  
 				    if (max[curr]==null) {
 				      max[curr] = -1;
 				    }
 				    
 				     if (min[curr]==null) {
-				      min[curr] = -100000;
+				      min[curr] = 1000000;
 				    }
-                                     if(curr != "_id")
+                                     if(curr != "_id" && curr != key)
                                        {
 					
 					  if (max[curr] <= item[curr]) {
@@ -134,11 +142,14 @@ function prepareStatistics(db)
                                          (stats[curr])["count"] += 1;
                                          (stats[curr])["avg"]=(stats[curr])["sum"]/(stats[curr])["count"];
                                        }
-
+                                    
                                    }
-				   console.log(curr+ " "+max[curr]+" " +min[curr]);
+				   
+				   for(var curr in max)
+				  {
 				   (stats[curr])["max"] = max[curr];
 				   (stats[curr])["min"] = min[curr];
+				  }
 
                                }).on('end',function()
                                      {
@@ -150,8 +161,77 @@ function prepareStatistics(db)
                                     });
                     });
      }
+     console.log("Done..");
 };
 
+
+/*
+  Prepare statistics document with id = STATS for the currencies.
+  Delta update
+  */
+function prepareDeltaStatistics(db, deltaData)
+{
+  
+      
+       db.collection(MONGO_COLL_AGG, function(err, coll)
+                    {
+		       for(var i=0;i<deltaData.length;i++)
+		      {
+			
+			      var base = (deltaData[i])["base"];
+			      var statKey = "STATS_"+base;
+		    	      console.log("Looking up: "+statKey);
+	                     coll.findOne({_id:statKey}, function (err,stats)
+						      {
+			      
+			      var delta = deltaData[i];
+                     
+                      
+				 
+				
+				 for(var key in delta)
+				 {
+				  
+				  if(key != "_id" &&  key != "base" )
+                                       {
+					  var currentValue = (delta)[key];
+					  if ((stats[key])["max"] <= currentValue) {
+					    (stats[key])["max"] = currentValue;
+					  }
+					    if ((stats[key])["min"] >= currentValue) {
+					    (stats[key])["min"] = currentValue;
+					  }
+                                         (stats[key])["sum"] += currentValue;
+                                         (stats[key])["count"] += 1;
+                                         (stats[key])["avg"]=(stats[key])["sum"]/(stats[key])["count"];
+                                       }
+				      
+				  
+				  
+				 }
+                                 
+
+                              
+				      
+				      if (stats!=null) {
+				      
+				      console.log(">>"+stats["_id"]+" "+statKey);
+                                       db.collection(MONGO_COLL_AGG).update({"_id" : statKey},JSON.stringify(stats),{upsert:true}, function(err,result)
+                                                   {
+                                                     if(err) throw err;
+                                                   });
+				      }
+				      else
+				      {
+					console.log("Delta stats error: Stats document is null.");
+				      }
+						      });
+                                   
+			}
+                    });
+     
+     console.log("Done..");
+};
 /*
 Data
 
@@ -369,7 +449,7 @@ module.exports = new function()
                             clearAllCurrencies(db);
                          }
 
-
+      
                        db.collection(coll_name,function(err,coll)
                                     {
                                       var stream = null;
@@ -381,19 +461,32 @@ module.exports = new function()
                                         {
                                           stream=coll.find({_id:record_id}).stream();
                                         }
-
+				      var deltaData = [];
                                       stream.on('data',function(item)
                                                {
                                                  if(!bulkMode)
                                                    {
                                                      console.log("New Item Id: "+item._id);
+						     deltaData = deltaData.concat(writeToMongo(item,db));
                                                    }
-                                                 writeToMongo(item,db);
+						   else
+						   {
+						      writeToMongo(item,db);
+						   }
+                                               
+					  
 
                                                }).on('end',function()
                                                     {
                                                       console.log("Done Stream... preparing statistics.");
-                                                      prepareStatistics(db);
+                                                      if (record_id != null) {
+							
+							prepareDeltaStatistics(db,deltaData);
+						      }
+						      else
+						      {
+							prepareStatistics(db);
+						      }
                                                     });
 
 
@@ -409,10 +502,4 @@ module.exports = new function()
   };
 }
 
-mongoClient.connect("mongodb://localhost:27017/Currency", function(err,db)
-                     {
-		      if (err) {
-			throw err;
-		      }
-prepareStatistics(db);
-		     });
+
