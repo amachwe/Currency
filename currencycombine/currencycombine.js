@@ -122,7 +122,7 @@ function prepareStatistics(db)
 				     if (min[curr]==null) {
 				      min[curr] = 1000000;
 				    }
-                                     if(curr != "_id" && curr != key)
+                                     if(curr != "_id" && curr != key && stats[curr]!=null)
                                        {
 					
 					  if (max[curr] <= item[curr]) {
@@ -140,8 +140,11 @@ function prepareStatistics(db)
 				   
 				   for(var curr in max)
 				  {
-				   (stats[curr])["max"] = max[curr];
-				   (stats[curr])["min"] = min[curr];
+				    if (stats[curr]!=null) {
+				     
+				      (stats[curr])["max"] = max[curr];
+				      (stats[curr])["min"] = min[curr];
+				    }
 				  }
 
                                }).on('end',function()

@@ -23,6 +23,8 @@ var http=require('http');
 var combine=require('./currencycombine');
 var mongoClient=require('mongodb').MongoClient;
 
+var badResponseCount=0;
+
 function loadCurrencyData()
 {
   var date = new Date();
@@ -45,14 +47,16 @@ function loadCurrencyData()
                               });
                    response.on('end',function()
                               {
-                                var jsonData=JSON.parse(data);
+                                try
+                                {
+                                  var jsonData=JSON.parse(data);
 
-                                jsonData._id=new Date().getTime();
+                                  jsonData._id=new Date().getTime();
 
-                                delete jsonData[KEY_LICENSE];
-                                delete jsonData[KEY_DISCLAIMER];
+                                  delete jsonData[KEY_LICENSE];
+                                  delete jsonData[KEY_DISCLAIMER];
 
-                                collection.insert(jsonData,{safe:true},function(err,result)
+                                  collection.insert(jsonData,{safe:true},function(err,result)
                                                  {
 
                                                    if(err) throw err;
@@ -60,6 +64,13 @@ function loadCurrencyData()
                                                    console.log("Done.");
                                                    combine.process(MONGO_DB_URL,null,jsonData._id);
                                                  });
+                                }
+                                catch(e)
+                                {
+                                  var time = new Date();
+                                  badResponseCount++;
+                                  console.log("Bad response: "+e+"\n"+time+"  count:"+badResponseCount);
+                                }
 
 
                               });
