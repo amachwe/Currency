@@ -7,7 +7,9 @@
     <script type="text/javascript" src="https://www.google.com/jsapi"></script>
     
     <script type="text/javascript">
-        var HOST = "http://192.168.0.29:3999";
+        const REMOTE = "http://192.168.0.29:3999";
+        const LOCAL = "http://localhost:3999";
+        var HOST = LOCAL;
         
         google.load("visualization", "1", {packages:["corechart"]});
         
@@ -31,11 +33,17 @@
         var base="";
         const popular = ["USD","GBP","NGN","INR","CAD", "EUR", "AED", "SAR","CNY"];
         var popularOnly = false;
-        function getStream(_popularOnly)
+        function getStream(_popularOnly,normalised)
         {
             popularOnly = _popularOnly;
             base = $(base_currency).val();
-            $.ajax({url:HOST+"/currency/sequence/"+base,type:"GET",success:processSequence});
+            if (normalised!=null && normalised == true) {
+                $.ajax({url:HOST+"/currency/sequence/normalised/"+base,type:"GET",success:processSequence});
+            }
+            else
+            {
+                $.ajax({url:HOST+"/currency/sequence/"+base,type:"GET",success:processSequence});
+            }
         }
         
         
@@ -62,14 +70,15 @@
     
                     var options = {
                       title: 'Currency Trend: '+currencyList[base]+' vs '+currencyList[codeList[j]],
-                      hAxis: {title: 'Time'},
-                      vAxis: {title: base+" - "+codeList[j]},
-                      legend: 'none'
+                      hAxis: {title: 'Time', titleFontSize: 10},
+                      vAxis: {title: base+" - 1 "+codeList[j], titleFontSize: 10},
+                      legend: 'none',
+                      pointSize: 1
                     };
 
                     $("<div style=\"height: 100px; width: 1000px;\"id=\"chart_div_"+codeList[j]+"\"></div>").appendTo("#chart_div");
      
-                    (new google.visualization.LineChart(document.getElementById('chart_div_'+codeList[j]))).draw(dataSet, options);
+                    (new google.visualization.ScatterChart(document.getElementById('chart_div_'+codeList[j]))).draw(dataSet, options);
                 }
                 
                
@@ -83,6 +92,7 @@
     Base Currency: <select id="base_currency"></select>
     <input style="margin-left: 50px;" type="button" id="generate" onclick="getStream(false);" value="Get Charts">
     <input style="margin-left: 50px;" type="button" id="generatePop" onclick="getStream(true);" value="Get Popular Charts"></input>
+    <input style="margin-left: 50px;" type="button" id="generatePop" onclick="getStream(true,true);" value="Get Popular Charts (Normalised)"></input>
     <span style="margin-left: 50px;" id="count_view"></span><span style="margin-left: 50px;" id="mode_view"></span>
     <div id="chart_div"></div>
 </body>

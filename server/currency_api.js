@@ -40,6 +40,17 @@ app.get("/currency/sequence/:code", function(request,response)
 
        });
 
+/*
+Sequence Normalised Stream
+*/
+app.get("/currency/sequence/normalised/:code", function(request,response)
+       {
+         response.header("Access-Control-Allow-Origin", "*");
+         response.header("Access-Control-Allow-Headers", "X-Requested-With");
+         
+         getCurrencyStream(request.params.code, response,true);
+
+       });
 app.listen(PORT);
 console.log("Currency API Active on port: "+PORT);
 
@@ -53,7 +64,7 @@ var JSONStream = require('JSONStream');
 const currency_list = combine.getCurrencyList();
 const MONGO_DB_URL="mongodb://localhost:27017/Currency";
 
-function getCurrencyStream(code,response)
+function getCurrencyStream(code,response,normalised)
   {
 
       if(currency_list[code]!=null)
@@ -62,7 +73,9 @@ function getCurrencyStream(code,response)
                        {
                          if(err) throw err;
 
-
+                              if (normalised!=null && normalised == true) {
+                                code = "NORM_"+code;
+                              }
                              db.collection(code, function(err,coll)
                                       {
                                         if(err) throw err;

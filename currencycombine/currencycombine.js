@@ -415,5 +415,95 @@ module.exports = new function()
   {
     return currency_list;
   };
+  
+  this.normalise = function(mongo_db_url)
+  {
+    if(mongo_db_url==null)
+      {
+        mongo_db_url=MONGO_DB_URL;
+        console.log("Using default DB URL.");
+      }
+    
+    mongoClient.connect(mongo_db_url, function(err,db)
+			{
+			  db.collection(MONGO_COLL_AGG, function(err,agg)
+						  {
+						    if (err) {
+						     console.log(err);
+						    }
+						    
+						    var stream = agg.find().stream(); 
+						    console.log("Start");
+						    var aggData = {};
+						    stream.on('data', function(data)
+							      {
+								aggData[data._base] = data;
+							      });
+						    
+						    stream.on('end',function()
+								    {
+								    //Begin processing
+								      for(var base in currency_list)
+								      {
+									
+									
+									    console.log("Normalising: "+base);
+									      
+									    db.collection(base, function(err,coll)
+											  {
+											    var baseAggData = aggData[base];
+											    var localBase = base;
+											    var normDataSet = []
+											    var baseStr = coll.find().stream();
+											    baseStr.on('data',function(data)
+												       {
+													 var normData = {};
+													 normData._id = data._id;
+													
+													 for(var to in data)
+													 {
+													  if (baseAggData[to]!=null && to!="_id") {
+													   
+													    
+													    normData[to.toString()] = (data[to]/baseAggData[to].max);
+													 
+													  }
+													 }
+													 
+													 normDataSet.push(normData);
+												       });
+											    baseStr.on('end',function()
+												       {
+													  db.collection("NORM_"+localBase, function(err,coll)
+															{
+															  coll.drop(); 
+															  coll.insert(normDataSet, {safe:false},function(err,result)
+																      {
+																	if (err) {
+																	  console.log(err);
+																	}
+																	console.log("Done: "+localBase);
+																	});
+															});
+												       });
+											  });
+									    
+									  }
+									
+								      
+								    
+								    });
+						  }
+						  );
+			 
+			
+			});
+  };
 }
 
+var RUN_TEST = true;
+/*
+ *TESTS 
+ */
+
+module.exports.normalise(MONGO_DB_URL);
