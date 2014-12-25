@@ -62,7 +62,10 @@ function loadCurrencyData()
                          console.log(e);
                        }
 
-                 }).end();
+                 }).on('error', function(err)
+                       {
+                        console.log(err);
+                       }).end();
   }
   catch(e)
   {

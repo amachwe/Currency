@@ -432,8 +432,16 @@ module.exports = new function()
 						     console.log(err);
 						    }
 						    
+						    for(var base in currency_list)
+						    {
+						      db.collection("NORM_"+base, function(err,coll)
+								    {
+								      coll.drop();
+								    });
+						    }
+						    
 						    var stream = agg.find().stream(); 
-						    console.log("Start");
+						    
 						    var aggData = {};
 						    stream.on('data', function(data)
 							      {
@@ -443,51 +451,59 @@ module.exports = new function()
 						    stream.on('end',function()
 								    {
 								    //Begin processing
+								    var normalisingList = [];
 								      for(var base in currency_list)
 								      {
+									  
 									
-									
-									    console.log("Normalising: "+base);
-									      
-									    db.collection(base, function(err,coll)
-											  {
-											    var baseAggData = aggData[base];
-											    var localBase = base;
-											    var normDataSet = []
-											    var baseStr = coll.find().stream();
-											    baseStr.on('data',function(data)
-												       {
-													 var normData = {};
-													 normData._id = data._id;
+									console.log("Normalising: "+base);
+									normalisingList.push(base);
+									  
+									db.collection(base, function(err,coll)
+										      {
+											var baseAggData = aggData[base];
+											var localBase = base;
+											var normDataSet = []
+											var baseStr = coll.find().stream();
+											baseStr.on('data',function(data)
+												   {
+												     var normData = {};
+												     normData._id = data._id;
+												    
+												     for(var to in data)
+												     {
+												      if (baseAggData[to]!=null && to!="_id") {
+												       
 													
-													 for(var to in data)
-													 {
-													  if (baseAggData[to]!=null && to!="_id") {
-													   
-													    
-													    normData[to.toString()] = (data[to]/baseAggData[to].max);
-													 
-													  }
-													 }
-													 
-													 normDataSet.push(normData);
-												       });
-											    baseStr.on('end',function()
-												       {
-													  db.collection("NORM_"+localBase, function(err,coll)
-															{
-															  coll.drop(); 
-															  coll.insert(normDataSet, {safe:false},function(err,result)
-																      {
-																	if (err) {
-																	  console.log(err);
-																	}
-																	console.log("Done: "+localBase);
-																	});
-															});
-												       });
-											  });
-									    
+													normData[to.toString()] = (data[to]/baseAggData[to].max);
+												     
+												      }
+												     }
+												     
+												     normDataSet.push(normData);
+												   });
+											baseStr.on('end',function()
+												   {
+												      db.collection("NORM_"+localBase, function(err,coll)
+														    {
+														      
+														      coll.insert(normDataSet, {safe:false},function(err,result)
+																  {
+																    if (err) {
+																      console.log(err);
+																    }
+																    console.log("Done: "+localBase+" Result: "+result);
+																   
+																	  
+																    normalisingList.pop();
+																    if (normalisingList.length == 0) {
+																      console.log("Normalisation complete..");
+																    }
+																    });
+														    });
+												   });
+										      });
+									
 									  }
 									
 								      
@@ -507,3 +523,5 @@ var RUN_TEST = true;
  */
 
 module.exports.normalise(MONGO_DB_URL);
+
+  
