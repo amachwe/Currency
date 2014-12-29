@@ -43,11 +43,11 @@ Write Currency data to database
 msg - response from currency service (openexchangerates.org)
 db - database object
 */
-function writeToMongo(msg, db)
+function writeToMongo(msg, db,bulkMode)
 {
   try
   {
-
+    
      var id = msg["_id"];
      var base = msg["base"];
      var rates = msg["rates"];
@@ -57,6 +57,7 @@ function writeToMongo(msg, db)
         var doc={};
         doc["_id"] = id;
         doc[base] = rates[from];
+	
 
         /*
         Get the currency conversion to all other currencies.
@@ -65,15 +66,47 @@ function writeToMongo(msg, db)
         {
             doc[to] = doc[base]/rates[to];
         }
-
+	
         db.collection(from,function(err,collection)
         {
-
+	    
 
            collection.insert(doc,{safe:true}, function(err,result)
            {
               if(err) throw err;
-
+	      if (bulkMode != null && bulkMode == false) {
+		//Delta Update Stats
+		db.collection("STATS_"+from,function(err,collection)
+			      {
+				var collName="STATS_"+from;
+				var stream = collection.find().stream();
+				stream.on('data',function(item)
+					  {
+					    console.log("Processing STATS_"+collName);
+					    for(var to in doc)
+					    {
+					      //Update statistics
+					      if (to!="_id") {
+						var statsDoc = item[to];
+						var toVal = doc[to];
+						statsDoc.count = statsDoc.count++;
+						statsDoc.sum += toVal;
+						statsDoc.avg = statsDoc.sum/statsDoc.count;
+						if (toVal > statsDoc.max) {
+						  statsDoc.max = toVal;
+						}
+						if (toVal < statsDoc.min) {
+						  statsDoc.min = toVal;
+						}
+					      }
+					    }
+					  }).on('end',function()
+						{
+						  console.log("..done. "+collName  );
+						});
+			      });
+	      }
+	      
            });
 
         });
@@ -88,7 +121,7 @@ function writeToMongo(msg, db)
 }
 
 /*
-  Prepare statistics document with id = STATS for the currencies.
+  Bulk Prepare statistics document with id = STATS for the currencies.
   */
 function prepareStatistics(db)
 {
@@ -160,6 +193,105 @@ function prepareStatistics(db)
      console.log("Done..");
 };
 
+function normalise(mongo_db_url)
+{
+    if(mongo_db_url==null)
+      {
+        mongo_db_url=MONGO_DB_URL;
+        console.log("Using default DB URL.");
+      }
+    
+    mongoClient.connect(mongo_db_url, function(err,db)
+			{
+			  db.collection(MONGO_COLL_AGG, function(err,agg)
+						  {
+						    if (err) {
+						     console.log(err);
+						    }
+						    
+						    for(var base in currency_list)
+						    {
+						      db.collection("NORM_"+base, function(err,coll)
+								    {
+								      coll.drop();
+								    });
+						    }
+						    
+						    var stream = agg.find().stream(); 
+						    
+						    var aggData = {};
+						    stream.on('data', function(data)
+							      {
+								aggData[data._base] = data;
+							      });
+						    
+						    stream.on('end',function()
+								    {
+								    //Begin processing
+								    var normalisingList = [];
+								      for(var base in currency_list)
+								      {
+									  
+									
+									console.log("Normalising: "+base);
+									normalisingList.push(base);
+									  
+									db.collection(base, function(err,coll)
+										      {
+											var baseAggData = aggData[base];
+											var localBase = base;
+											var normDataSet = []
+											var baseStr = coll.find().stream();
+											baseStr.on('data',function(data)
+												   {
+												     var normData = {};
+												     normData._id = data._id;
+												    
+												     for(var to in data)
+												     {
+												      if (baseAggData[to]!=null && to!="_id") {
+												       
+													
+													normData[to.toString()] = (data[to]/baseAggData[to].max);
+												     
+												      }
+												     }
+												     
+												     normDataSet.push(normData);
+												   });
+											baseStr.on('end',function()
+												   {
+												      db.collection("NORM_"+localBase, function(err,coll)
+														    {
+														      
+														      coll.insert(normDataSet, {safe:false},function(err,result)
+																  {
+																    if (err) {
+																      console.log(err);
+																    }
+																    console.log("Done: "+localBase+" Result: "+result);
+																   
+																	  
+																    normalisingList.pop();
+																    if (normalisingList.length == 0) {
+																      console.log("Normalisation complete..");
+																    }
+																    });
+														    });
+												   });
+										      });
+									
+									  }
+									
+								      
+								    
+								    });
+						  }
+						  );
+			 
+			
+			});
+};
 /*
 Data
 
@@ -396,12 +528,17 @@ module.exports = new function()
                                                    {
                                                      console.log("New Item Id: "+item._id);
                                                    }
-                                                 writeToMongo(item,db);
+                                                 writeToMongo(item,db,bulkMode);
 
                                                }).on('end',function()
                                                     {
                                                       console.log("Done Stream... preparing statistics.");
-                                                      prepareStatistics(db);
+						      if (bulkMode) {
+							console.log("Bulk mode");
+							prepareStatistics(db);
+							normalise(mongo_db_url);
+						      }
+						      
                                                     });
 
 
@@ -416,112 +553,9 @@ module.exports = new function()
     return currency_list;
   };
   
-  this.normalise = function(mongo_db_url)
-  {
-    if(mongo_db_url==null)
-      {
-        mongo_db_url=MONGO_DB_URL;
-        console.log("Using default DB URL.");
-      }
-    
-    mongoClient.connect(mongo_db_url, function(err,db)
-			{
-			  db.collection(MONGO_COLL_AGG, function(err,agg)
-						  {
-						    if (err) {
-						     console.log(err);
-						    }
-						    
-						    for(var base in currency_list)
-						    {
-						      db.collection("NORM_"+base, function(err,coll)
-								    {
-								      coll.drop();
-								    });
-						    }
-						    
-						    var stream = agg.find().stream(); 
-						    
-						    var aggData = {};
-						    stream.on('data', function(data)
-							      {
-								aggData[data._base] = data;
-							      });
-						    
-						    stream.on('end',function()
-								    {
-								    //Begin processing
-								    var normalisingList = [];
-								      for(var base in currency_list)
-								      {
-									  
-									
-									console.log("Normalising: "+base);
-									normalisingList.push(base);
-									  
-									db.collection(base, function(err,coll)
-										      {
-											var baseAggData = aggData[base];
-											var localBase = base;
-											var normDataSet = []
-											var baseStr = coll.find().stream();
-											baseStr.on('data',function(data)
-												   {
-												     var normData = {};
-												     normData._id = data._id;
-												    
-												     for(var to in data)
-												     {
-												      if (baseAggData[to]!=null && to!="_id") {
-												       
-													
-													normData[to.toString()] = (data[to]/baseAggData[to].max);
-												     
-												      }
-												     }
-												     
-												     normDataSet.push(normData);
-												   });
-											baseStr.on('end',function()
-												   {
-												      db.collection("NORM_"+localBase, function(err,coll)
-														    {
-														      
-														      coll.insert(normDataSet, {safe:false},function(err,result)
-																  {
-																    if (err) {
-																      console.log(err);
-																    }
-																    console.log("Done: "+localBase+" Result: "+result);
-																   
-																	  
-																    normalisingList.pop();
-																    if (normalisingList.length == 0) {
-																      console.log("Normalisation complete..");
-																    }
-																    });
-														    });
-												   });
-										      });
-									
-									  }
-									
-								      
-								    
-								    });
-						  }
-						  );
-			 
-			
-			});
-  };
+ 
 }
 
-var RUN_TEST = true;
-/*
- *TESTS 
- */
 
-module.exports.normalise(MONGO_DB_URL);
 
   
