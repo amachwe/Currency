@@ -70,40 +70,63 @@ function writeToMongo(msg, db,bulkMode)
         db.collection(from,function(err,collection)
         {
 	    
-
+	   console.log(from);
+	   var statsTarget = from;
            collection.insert(doc,{safe:true}, function(err,result)
            {
+	      
               if(err) throw err;
 	      if (bulkMode != null && bulkMode == false) {
+		
 		//Delta Update Stats
-		db.collection("STATS_"+from,function(err,collection)
+		db.collection(MONGO_COLL_AGG,function(err,collection)
 			      {
-				var collName="STATS_"+from;
-				var stream = collection.find().stream();
+				var currName = "STATS_"+statsTarget;
+				console.log("Processing: "+currName);
+				var stream = collection.find({_id:currName}).stream();
 				stream.on('data',function(item)
 					  {
-					    console.log("Processing STATS_"+collName);
-					    for(var to in doc)
-					    {
-					      //Update statistics
-					      if (to!="_id") {
-						var statsDoc = item[to];
-						var toVal = doc[to];
-						statsDoc.count = statsDoc.count++;
-						statsDoc.sum += toVal;
-						statsDoc.avg = statsDoc.sum/statsDoc.count;
-						if (toVal > statsDoc.max) {
-						  statsDoc.max = toVal;
-						}
-						if (toVal < statsDoc.min) {
-						  statsDoc.min = toVal;
+					   
+					      
+					    if (item!=null) {
+					      
+					      
+					      
+					      for(var to in doc)
+					      {
+						
+						//Update statistics
+						if (to!="_id") {
+						  var statsDoc = item[to];
+						  var toVal = doc[to];
+						  statsDoc.count = statsDoc.count+1;
+						  statsDoc.sum += toVal;
+						  statsDoc.avg = statsDoc.sum/statsDoc.count;
+						  if (toVal > statsDoc.max) {
+						    statsDoc.max = toVal;
+						  }
+						  if (toVal < statsDoc.min) {
+						    statsDoc.min = toVal;
+						  }
+						  
+						  item[to] = statsDoc;
 						}
 					      }
+					      console.log("\nUpdating: "+currName+"\n"+JSON.stringify(item));
+					      collection.update({_id:currName},item,function(err, result)
+								{
+								  if (err) {
+								    throw err;
+								  }
+								});
 					    }
+					    
 					  }).on('end',function()
 						{
-						  console.log("..done. "+collName  );
+						  console.log("..done. "+currName  );
 						});
+					  
+					  
 			      });
 	      }
 	      
@@ -269,7 +292,7 @@ function normalise(mongo_db_url)
 																    if (err) {
 																      console.log(err);
 																    }
-																    console.log("Done: "+localBase+" Result: "+result);
+																    console.log("Done: "+localBase);
 																   
 																	  
 																    normalisingList.pop();
