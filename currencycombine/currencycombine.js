@@ -51,7 +51,7 @@ function writeToMongo(msg, db,bulkMode)
      var id = msg["_id"];
      var base = msg["base"];
      var rates = msg["rates"];
-
+     var docColl = {};
      for(var from in rates)
      {
         var doc={};
@@ -67,21 +67,38 @@ function writeToMongo(msg, db,bulkMode)
             doc[to] = doc[base]/rates[to];
         }
 	
+	docColl[from] = doc;
+	
         db.collection(from,function(err,collection)
         {
 	    
-	   console.log(from);
-	   var statsTarget = from;
+	   
+	   ;
            collection.insert(doc,{safe:true}, function(err,result)
            {
 	      
               if(err) throw err;
-	      if (bulkMode != null && bulkMode == false) {
+	      
+	      
+           });
+
+        });
+      }
+
+      if (bulkMode != null && bulkMode == false) {
+	console.log("Delta mode - stats processing");
+	for(var from in docColl)
+	{
+		
 		
 		//Delta Update Stats
 		db.collection(MONGO_COLL_AGG,function(err,collection)
 			      {
-				var currName = "STATS_"+statsTarget;
+				var currName = "STATS_"+from;
+				var currDoc = docColl[from];
+				
+				
+				
 				console.log("Processing: "+currName);
 				var stream = collection.find({_id:currName}).stream();
 				stream.on('data',function(item)
@@ -91,16 +108,17 @@ function writeToMongo(msg, db,bulkMode)
 					    if (item!=null) {
 					      
 					      
-					      
-					      for(var to in doc)
+					     
+					      for(var to in currDoc)
 					      {
 						
 						//Update statistics
 						if (to!="_id") {
 						  var statsDoc = item[to];
-						  var toVal = doc[to];
+						  var toVal = currDoc[to];
+						  
 						  statsDoc.count = statsDoc.count+1;
-						  statsDoc.sum += toVal;
+						  statsDoc.sum = statsDoc.sum + toVal;
 						  statsDoc.avg = statsDoc.sum/statsDoc.count;
 						  if (toVal > statsDoc.max) {
 						    statsDoc.max = toVal;
@@ -112,7 +130,7 @@ function writeToMongo(msg, db,bulkMode)
 						  item[to] = statsDoc;
 						}
 					      }
-					      console.log("\nUpdating: "+currName+"\n"+JSON.stringify(item));
+					      
 					      collection.update({_id:currName},item,function(err, result)
 								{
 								  if (err) {
@@ -128,13 +146,8 @@ function writeToMongo(msg, db,bulkMode)
 					  
 					  
 			      });
-	      }
-	      
-           });
-
-        });
+	}
       }
-
   }
   catch(e)
   {
@@ -298,6 +311,7 @@ function normalise(mongo_db_url)
 																    normalisingList.pop();
 																    if (normalisingList.length == 0) {
 																      console.log("Normalisation complete..");
+																      process.exit();
 																    }
 																    });
 														    });
