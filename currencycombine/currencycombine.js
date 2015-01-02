@@ -11,7 +11,7 @@ const MONGO_COLL_RAW="Raw";
 const MONGO_COLL_AGG="Aggregates";
 
 var mongoClient=require('mongodb').MongoClient;
-
+var fork = require("child_process").fork;
 
 
 /*
@@ -94,13 +94,14 @@ function writeToMongo(msg, db,bulkMode)
 		//Delta Update Stats
 		db.collection(MONGO_COLL_AGG,function(err,collection)
 			      {
-				var currName = "STATS_"+from;
+				var currName = from;
+				var statsCurrName = "STATS_"+from;
 				var currDoc = docColl[from];
 				
 				
 				
-				console.log("Processing: "+currName);
-				var stream = collection.find({_id:currName}).stream();
+				console.log("Processing: "+statsCurrName);
+				var stream = collection.find({_id:statsCurrName}).stream();
 				stream.on('data',function(item)
 					  {
 					   
@@ -132,7 +133,7 @@ function writeToMongo(msg, db,bulkMode)
 						}
 					      }
 					      
-					      collection.update({_id:currName},item,function(err, result)
+					      collection.update({_id:statsCurrName},item,function(err, result)
 								{
 								  if (err) {
 								    throw err;
@@ -142,9 +143,22 @@ function writeToMongo(msg, db,bulkMode)
 					    
 					  }).on('end',function()
 						{
-						  console.log("..done. "+currName  );
+						  console.log("..done. "+statsCurrName  );
 						  
 						  //FORK - setup child monitoring
+						  var cp = fork("./normalise.js",[currName,MONGO_DB_URL,MONGO_COLL_AGG]);
+						  console.log("Normalise: "+cp.pid+" - "+currName);
+						  
+						  cp.on('message',function(msg)
+							{
+							  console.log(cp.pid+" - "+msg.text);
+							}).on('error', function(error)
+							      {
+								console.log(cp.pid+ " - "+currName+" Error: "+error);
+							      }).on('exit',function()
+								    {
+								      console.log(cp.pid+ " - "+currName+" exiting.");
+								    });
 						});
 					  
 					  
