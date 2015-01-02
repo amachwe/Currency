@@ -120,6 +120,7 @@ function writeToMongo(msg, db,bulkMode)
 						  statsDoc.count = statsDoc.count+1;
 						  statsDoc.sum = statsDoc.sum + toVal;
 						  statsDoc.avg = statsDoc.sum/statsDoc.count;
+						  
 						  if (toVal > statsDoc.max) {
 						    statsDoc.max = toVal;
 						  }
@@ -142,6 +143,8 @@ function writeToMongo(msg, db,bulkMode)
 					  }).on('end',function()
 						{
 						  console.log("..done. "+currName  );
+						  
+						  //FORK - setup child monitoring
 						});
 					  
 					  
@@ -229,7 +232,7 @@ function prepareStatistics(db)
      console.log("Done..");
 };
 
-function normalise(mongo_db_url)
+function bulkNormalise(mongo_db_url)
 {
     if(mongo_db_url==null)
       {
@@ -573,7 +576,7 @@ module.exports = new function()
 						      if (bulkMode) {
 							console.log("Bulk mode");
 							prepareStatistics(db);
-							normalise(mongo_db_url);
+							bulkNormalise(mongo_db_url);
 						      }
 						      
                                                     });
