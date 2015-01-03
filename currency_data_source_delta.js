@@ -29,7 +29,7 @@ function loadCurrencyData()
 {
   var date = new Date();
   var day = date.getDay();
-  if (day == 0 || day == 6) {
+  if ((day == 0 || day == 6) && process.argv[2]!="test") {
     console.log("No need to get data for Saturday or Sunday, date: "+date);
     return;
   }

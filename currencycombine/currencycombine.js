@@ -97,7 +97,7 @@ function writeToMongo(msg, db,bulkMode)
 				var currName = from;
 				var statsCurrName = "STATS_"+from;
 				var currDoc = docColl[from];
-				
+				var maxChanged = false;
 				
 				
 				console.log("Processing: "+statsCurrName);
@@ -124,6 +124,7 @@ function writeToMongo(msg, db,bulkMode)
 						  
 						  if (toVal > statsDoc.max) {
 						    statsDoc.max = toVal;
+						    maxChanged=true;
 						  }
 						  if (toVal < statsDoc.min) {
 						    statsDoc.min = toVal;
@@ -143,10 +144,14 @@ function writeToMongo(msg, db,bulkMode)
 					    
 					  }).on('end',function()
 						{
-						  console.log("..done. "+statsCurrName  );
-						  
+						  console.log("..done. "+statsCurrName+ " Max Changed: "+maxChanged  );
+						  var currDocId = null;
+						  if (!maxChanged) {
+						    currDocId = currDoc._id;
+						    console.log("Max not changed: "+currDocId);
+						  }
 						  //FORK - setup child monitoring
-						  var cp = fork("./normalise.js",[currName,MONGO_DB_URL,MONGO_COLL_AGG]);
+						  var cp = fork("./normalise.js",[currName,MONGO_DB_URL,MONGO_COLL_AGG,currDocId]);
 						  console.log("Normalise: "+cp.pid+" - "+currName);
 						  
 						  cp.on('message',function(msg)
