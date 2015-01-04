@@ -11,7 +11,7 @@ const MONGO_COLL_RAW="Raw";
 const MONGO_COLL_AGG="Aggregates";
 
 var mongoClient=require('mongodb').MongoClient;
-
+var fork = require("child_process").fork;
 
 
 /*
@@ -43,20 +43,21 @@ Write Currency data to database
 msg - response from currency service (openexchangerates.org)
 db - database object
 */
-function writeToMongo(msg, db)
+function writeToMongo(msg, db,bulkMode)
 {
   try
   {
-
+    
      var id = msg["_id"];
      var base = msg["base"];
      var rates = msg["rates"];
-
+     var docColl = {};
      for(var from in rates)
      {
         var doc={};
         doc["_id"] = id;
         doc[base] = rates[from];
+	
 
         /*
         Get the currency conversion to all other currencies.
@@ -65,20 +66,109 @@ function writeToMongo(msg, db)
         {
             doc[to] = doc[base]/rates[to];
         }
-
+	
+	docColl[from] = doc;
+	
         db.collection(from,function(err,collection)
         {
-
-
+	    
+	   
+	   ;
            collection.insert(doc,{safe:true}, function(err,result)
            {
+	      
               if(err) throw err;
-
+	      
+	      
            });
 
         });
       }
 
+      if (bulkMode != null && bulkMode == false) {
+	console.log("Delta mode - stats processing");
+	for(var from in docColl)
+	{
+		
+		
+		//Delta Update Stats
+		db.collection(MONGO_COLL_AGG,function(err,collection)
+			      {
+				var currName = from;
+				var statsCurrName = "STATS_"+from;
+				var currDoc = docColl[from];
+				var maxChanged = false;
+				
+				
+				console.log("Processing: "+statsCurrName);
+				var stream = collection.find({_id:statsCurrName}).stream();
+				stream.on('data',function(item)
+					  {
+					    
+					      
+					    if (item!=null) {
+					     
+					      for(var to in currDoc)
+					      {
+						
+						//Update statistics
+						if (to!="_id" && to!=from) {
+						  var statsDoc = item[to];
+						  
+						  var toVal = currDoc[to];
+						  
+						  statsDoc.count = statsDoc.count+1;
+						  statsDoc.sum = statsDoc.sum + toVal;
+						  statsDoc.avg = statsDoc.sum/statsDoc.count;
+						  
+						  if (toVal > statsDoc.max) {
+						    statsDoc.max = toVal;
+						    maxChanged=true;
+						  }
+						  if (toVal < statsDoc.min) {
+						    statsDoc.min = toVal;
+						  }
+						  
+						  item[to] = statsDoc;
+						}
+					      }
+					      
+					      collection.update({_id:statsCurrName},item,function(err, result)
+								{
+								  if (err) {
+								    throw err;
+								  }
+								});
+					    }
+					    
+					  }).on('end',function()
+						{
+						  console.log("..done. "+statsCurrName+ " Max Changed: "+maxChanged  );
+						  var currDocId = null;
+						  if (!maxChanged) {
+						    currDocId = currDoc._id;
+						    console.log("Max not changed: "+currDocId);
+						  }
+						  //FORK - setup child monitoring
+						  var cp = fork("./normalise.js",[currName,MONGO_DB_URL,MONGO_COLL_AGG,currDocId]);
+						  console.log("Normalise: "+cp.pid+" - "+currName);
+						  
+						  cp.on('message',function(msg)
+							{
+							  console.log(cp.pid+" - "+msg.text);
+							}).on('error', function(error)
+							      {
+								console.log(cp.pid+ " - "+currName+" Error: "+error);
+							      }).on('exit',function()
+								    {
+								      console.log(cp.pid+ " - "+currName+" exiting.");
+								    });
+						});
+					  
+					  
+			      });
+	}
+      }
   }
   catch(e)
   {
@@ -88,7 +178,7 @@ function writeToMongo(msg, db)
 }
 
 /*
-  Prepare statistics document with id = STATS for the currencies.
+  Bulk Prepare statistics document with id = STATS for the currencies.
   */
 function prepareStatistics(db)
 {
@@ -160,6 +250,106 @@ function prepareStatistics(db)
      console.log("Done..");
 };
 
+function bulkNormalise(mongo_db_url)
+{
+    if(mongo_db_url==null)
+      {
+        mongo_db_url=MONGO_DB_URL;
+        console.log("Using default DB URL.");
+      }
+    
+    mongoClient.connect(mongo_db_url, function(err,db)
+			{
+			  db.collection(MONGO_COLL_AGG, function(err,agg)
+						  {
+						    if (err) {
+						     console.log(err);
+						    }
+						    
+						    for(var base in currency_list)
+						    {
+						      db.collection("NORM_"+base, function(err,coll)
+								    {
+								      coll.drop();
+								    });
+						    }
+						    
+						    var stream = agg.find().stream(); 
+						    
+						    var aggData = {};
+						    stream.on('data', function(data)
+							      {
+								aggData[data._base] = data;
+							      });
+						    
+						    stream.on('end',function()
+								    {
+								    //Begin processing
+								    var normalisingList = [];
+								      for(var base in currency_list)
+								      {
+									  
+									
+									console.log("Normalising: "+base);
+									normalisingList.push(base);
+									  
+									db.collection(base, function(err,coll)
+										      {
+											var baseAggData = aggData[base];
+											var localBase = base;
+											var normDataSet = []
+											var baseStr = coll.find().stream();
+											baseStr.on('data',function(data)
+												   {
+												     var normData = {};
+												     normData._id = data._id;
+												    
+												     for(var to in data)
+												     {
+												      if (baseAggData[to]!=null && to!="_id") {
+												       
+													
+													normData[to.toString()] = (data[to]/baseAggData[to].max);
+												     
+												      }
+												     }
+												     
+												     normDataSet.push(normData);
+												   });
+											baseStr.on('end',function()
+												   {
+												      db.collection("NORM_"+localBase, function(err,coll)
+														    {
+														      
+														      coll.insert(normDataSet, {safe:false},function(err,result)
+																  {
+																    if (err) {
+																      console.log(err);
+																    }
+																    console.log("Done: "+localBase);
+																   
+																	  
+																    normalisingList.pop();
+																    if (normalisingList.length == 0) {
+																      console.log("Normalisation complete..");
+																      process.exit();
+																    }
+																    });
+														    });
+												   });
+										      });
+									
+									  }
+									
+								      
+								    
+								    });
+						  }
+						  );
+			 
+			
+			});
+};
 /*
 Data
 
@@ -396,12 +586,17 @@ module.exports = new function()
                                                    {
                                                      console.log("New Item Id: "+item._id);
                                                    }
-                                                 writeToMongo(item,db);
+                                                 writeToMongo(item,db,bulkMode);
 
                                                }).on('end',function()
                                                     {
                                                       console.log("Done Stream... preparing statistics.");
-                                                      prepareStatistics(db);
+						      if (bulkMode) {
+							console.log("Bulk mode");
+							prepareStatistics(db);
+							bulkNormalise(mongo_db_url);
+						      }
+						      
                                                     });
 
 
@@ -415,5 +610,10 @@ module.exports = new function()
   {
     return currency_list;
   };
+  
+ 
 }
 
+
+
+  
