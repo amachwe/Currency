@@ -104,18 +104,17 @@ function writeToMongo(msg, db,bulkMode)
 				var stream = collection.find({_id:statsCurrName}).stream();
 				stream.on('data',function(item)
 					  {
-					   
+					    
 					      
 					    if (item!=null) {
-					      
-					      
 					     
 					      for(var to in currDoc)
 					      {
 						
 						//Update statistics
-						if (to!="_id") {
+						if (to!="_id" && to!=from) {
 						  var statsDoc = item[to];
+						  
 						  var toVal = currDoc[to];
 						  
 						  statsDoc.count = statsDoc.count+1;
