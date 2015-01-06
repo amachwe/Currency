@@ -86,11 +86,12 @@ function writeToMongo(msg, db,bulkMode)
       }
 
       if (bulkMode != null && bulkMode == false) {
+	var wipList = [];
 	console.log("Delta mode - stats processing");
 	for(var from in docColl)
 	{
 		
-		
+		 wipList.push(from);
 		//Delta Update Stats
 		db.collection(MONGO_COLL_AGG,function(err,collection)
 			      {
@@ -143,15 +144,14 @@ function writeToMongo(msg, db,bulkMode)
 					    
 					  }).on('end',function()
 						{
-						  console.log("..done. "+statsCurrName+ " Max Changed: "+maxChanged  );
+						  console.log("..done. "+statsCurrName+ " Max Changed: "+maxChanged +" Normalising now.." );
 						  var currDocId = null;
-						  if (!maxChanged) {
+						  if (maxChanged!=true) {
 						    currDocId = currDoc._id;
-						    console.log("Max not changed: "+currDocId);
 						  }
 						  //FORK - setup child monitoring
 						  var cp = fork("./normalise.js",[currName,MONGO_DB_URL,MONGO_COLL_AGG,currDocId]);
-						  console.log("Normalise: "+cp.pid+" - "+currName);
+						  
 						  
 						  cp.on('message',function(msg)
 							{
@@ -161,7 +161,12 @@ function writeToMongo(msg, db,bulkMode)
 								console.log(cp.pid+ " - "+currName+" Error: "+error);
 							      }).on('exit',function()
 								    {
-								      console.log(cp.pid+ " - "+currName+" exiting.");
+								      wipList.pop();
+								      console.log("  completed "+currName);
+								      if (wipList.length == 0) {
+									console.log("Processing finished");
+									db.close();
+								      }
 								    });
 						});
 					  
