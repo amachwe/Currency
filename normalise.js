@@ -107,7 +107,7 @@ function normalise(mongo_db_url)
 														      }
 														      else
 														      {
-															coll.insert(normDataSet, {safe:false},function(err,result)
+															coll.insert(normDataSet, {safe:true},function(err,result)
 																    {
 																      if (err) {
 																	console.log("Error on "+normCollName+": "+err);
