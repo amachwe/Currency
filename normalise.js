@@ -15,8 +15,8 @@ var dataDocId = process.argv[5];
 var normCollName = "NORM_"+currency;
 var statsDocId = "STATS_"+currency;
 
-
-console.log("Normalising base: "+currency+" from:"+mongo_db_url+"/"+agg_coll+"    Data doc Id:"+dataDocId);
+var signature = "Normalising base: "+currency+" from:"+mongo_db_url+"/"+agg_coll+"    Data doc Id:"+dataDocId;
+console.log(signature);
 
 normalise(mongo_db_url);
 function normalise(mongo_db_url)
@@ -29,10 +29,14 @@ function normalise(mongo_db_url)
     
     mongoClient.connect(mongo_db_url, function(err,db)
 			{
+			  if(err) 
+			  {
+                            console.log(signature+" > Error getting db connection: "+err);
+			  }
 			  db.collection(agg_coll, function(err,agg)
 						  {
 						    if (err) {
-						     console.log(err);
+						     console.log(signature+" > Error getting Aggregation Collection: "+err);
 						    }
 						    
 						    
@@ -52,7 +56,7 @@ function normalise(mongo_db_url)
 								    //Begin processing
 								   
 									  
-									process.send({text: "Starting.."});
+									
 									
 									  
 									db.collection(currency, function(err,data_coll)
@@ -103,15 +107,17 @@ function normalise(mongo_db_url)
 														      }
 														      else
 														      {
-															coll.insert(normDataSet, {safe:false},function(err,result)
+															coll.insert(normDataSet, {safe:true},function(err,result)
 																    {
 																      if (err) {
 																	console.log("Error on "+normCollName+": "+err);
 																      }
 																      else{
-																      process.send({text: "Done: "+normCollName});
+																      	process.send({text: "Done: "+normCollName});
+
+
 																      }
-																  
+																      db.close();
 																      });
 														      }
 														    });
