@@ -69,8 +69,20 @@ socket.on('message', function(message)
                     if (message=="ERROR") {
                        console.log("Test complete with ERRORs."); 
                     }
-                    if (message == "FINISHED") {
-		      console.log("Ending socket..");
+                    if (message == "FINISHED-DELTA") {
+		      console.log("(Delta) Ending socket..");
+		      try
+		      {
+			socket.close();
+			
+		      }
+		      catch(e)
+		      {
+			console.log("Error closing socket."+e);
+		      }
+		    }
+		     if (message == "FINISHED-RESYNC") {
+		      console.log("(Resync) Ending socket..");
 		      try
 		      {
 			socket.close();
@@ -234,7 +246,14 @@ function writeToMongo(msg, db,bulkMode)
 									console.log("Processing finished "+(new Date()));
 									db.close();
 									console.log("Sending aggregation request.");
-									sendAggRequest(currDocId,true);
+									try
+									{
+									  sendAggRequest(currDocId,true);
+									}
+									catch(e)
+									{
+									  console.log(e);
+									}
 								      }
 								    });
 						});

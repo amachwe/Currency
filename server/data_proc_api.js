@@ -28,12 +28,13 @@ function messageCallback(message)
           else
           {
             aggregation_running = true;
+            
             var data = JSON.parse(message);
             var baseList = data.baseList;
             var target = data.target;
             var source = data.source;
             var normalise = data.normalise !=null ? true:false;
-            var docId = data.docid !=null ? data.docid : 0;
+            var docId = data.docId !=null ? data.docId : 0;
             
             if (docId == 0) {
                console.log("Running resync aggregation.");
@@ -83,7 +84,14 @@ function messageCallback(message)
                                                                   batchCount--;
                                                                   if (batchCount == 0 ) {
                                                                         console.log("All done.");
-                                                                        socket.send("FINISHED");
+                                                                        if (docId > 0 ) {
+                                                                           socket.send("FINISHED-DELTA");   
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                           socket.send("FINISHED-RESYNC");
+                                                                        }
+                                                                        
                                                                         aggregation_running = false;
                                                                         
                                                                   }
