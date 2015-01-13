@@ -5,8 +5,10 @@
 /**
 MongoDB Raw to processed collection with rates across other currencies
 */
-
-const MONGO_DB_URL="mongodb://localhost:27017/Currency";
+const SERVER = "mongodb://localhost:27017";
+const CURR_DB = "Currency";
+const AGG_DB = "CurrencyAggregate";
+const MONGO_DB_URL=SERVER+"/"+CURR_DB;
 const MONGO_COLL_RAW="Raw";
 const MONGO_COLL_AGG="Aggregates";
 
@@ -17,8 +19,75 @@ var fork = require("child_process").fork;
 /*
 Functions
 */
-
+function getCurrencyCodeList()
+{
+  
+    var codeList = [];
+    for(var key in currency_list)
+    {
+      codeList.push(key);
+    }
+    
+    return codeList;
+  
+}
 /*
+ Helper - send WS message
+ */
+var ws = require("ws");
+
+
+function sendAggRequest(_docId,_normalise) {
+  
+
+var request =
+{
+    
+    source: SERVER+"/"+CURR_DB,
+    target: SERVER+"/"+AGG_DB,
+    baseList: getCurrencyCodeList(),//{"USD":1,"GBP":2,"INR":3,"AED":4,"CAD":5,"EUR":6,"JPY":7,"NGN":8},
+    normalise: _normalise,
+    docId: _docId
+}
+
+
+
+var socket = new ws("ws://localhost:8080");
+socket.on('open',function()
+          {
+	    console.log("Sending request...  ");
+            socket.send(JSON.stringify(request));
+            
+          });
+socket.on('message', function(message)
+          {
+            console.log(message);
+            
+               
+               
+                    
+                    if (message=="ERROR") {
+                       console.log("Test complete with ERRORs."); 
+                    }
+                    if (message == "FINISHED") {
+		      console.log("Ending socket..");
+		      try
+		      {
+			socket.close();
+			process.exit();
+		      }
+		      catch(e)
+		      {
+			console.log("Error closing socket."+e);
+		      }
+		    }
+                    
+                
+            
+          });
+}
+/*
+ *
 Clear all currency data
 
 db - database object
@@ -28,11 +97,7 @@ function clearAllCurrencies(db)
   for(var key in currency_list)
     {
       console.log("Clearing: "+key);
-      db.collection(key).remove(function(err,result)
-      {
-         if(err) throw err;
-
-      });
+      db.collection(key).drop();
 
     }
 }
@@ -159,13 +224,17 @@ function writeToMongo(msg, db,bulkMode)
 							}).on('error', function(error)
 							      {
 								console.log(cp.pid+ " - "+currName+" Error: "+error);
-							      }).on('exit',function()
+							      }).on('exit',function(code)
 								    {
 								      wipList.pop();
 								      console.log("  completed "+currName);
+								    
 								      if (wipList.length == 0) {
-									console.log("Processing finished");
+									
+									console.log("Processing finished "+(new Date()));
 									db.close();
+									console.log("Sending aggregation request.");
+									sendAggRequest(currDocId,true);
 								      }
 								    });
 						});
@@ -337,7 +406,8 @@ function bulkNormalise(mongo_db_url)
 																    normalisingList.pop();
 																    if (normalisingList.length == 0) {
 																      console.log("Normalisation complete..");
-																      process.exit();
+																      sendAggRequest(null,true);
+																      
 																    }
 																    });
 														    });
@@ -616,7 +686,7 @@ module.exports = new function()
     return currency_list;
   };
   
- 
+  this.getCurrencyCodeList= getCurrencyCodeList
 }
 
 
