@@ -425,8 +425,14 @@ function bulkNormalise(mongo_db_url)
 																    normalisingList.pop();
 																    if (normalisingList.length == 0) {
 																      console.log("Normalisation complete..");
-																      sendAggRequest(null,true);
-																      
+																      try
+																      {
+																	sendAggRequest(null,true);
+																      }
+																      catch(e)
+																      {
+																	console.log(e);
+																      }
 																    }
 																    });
 														    });
